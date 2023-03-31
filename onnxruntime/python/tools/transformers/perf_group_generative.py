@@ -50,8 +50,8 @@ commandline_gpt2_running_key = {
 
 gpt2_running_variants = {
     "small_context": {"max_length": 32, "context_length": [128], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
-    "middle_context": {"max_length": 32, "context_length": [512], "batch_size": [1, 2, 4, 8, 16]},
-    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4]},
+    "middle_context": {"max_length": 32, "context_length": [512], "batch_size": [1, 2, 4, 8, 16, 32]},
+    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4, 32]},
     "different_length_context": {
         "max_length": 32,
         "context_length": [32, 64, 99, 128, 160, 192, 227, 256],
