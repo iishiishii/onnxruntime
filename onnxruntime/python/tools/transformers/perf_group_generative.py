@@ -50,8 +50,8 @@ commandline_gpt2_running_key = {
 
 gpt2_running_variants = {
     "small_context": {"max_length": 32, "context_length": [128], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
-    "middle_context": {"max_length": 32, "context_length": [512], "batch_size": [1, 2, 4, 8, 16, 32]},
-    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4, 8, 16, 32]},
+    "middle_context": {"max_length": 32, "context_length": [512], "batch_size": [1, 2, 4, 8, 16]},
+    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4]},
     "different_length_context": {
         "max_length": 32,
         "context_length": [32, 64, 99, 128, 160, 192, 227, 256],
@@ -239,5 +239,6 @@ if __name__ == "__main__":
     # Test on beam search 4:
     #   python perf_group_generative.py --workspace ~/gpt2_beam4 --cache_dir ~/cache_models --search_type beam --num_beams=4 --num_return_sequences=4
     #
+    os.environ["ORT_ENABLE_FUSED_CAUSAL_ATTENTION"] = "1"
     args = parse_arguments(sys.argv[1:])
     perform_group_perf(args)
