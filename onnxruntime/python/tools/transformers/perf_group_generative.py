@@ -218,9 +218,12 @@ def perform_group_perf(args):
                     perf_args.extend(simple_perf_args)
                     result, _ = parse_perf_single_generative_model(perf_args)
 
-                    report_message(
-                        freport, f"    ====> Average_latency_ms:{result['average_latency_ms']}, {simple_perf_args}"
-                    )
+                    if result is None:
+                        report_message(freport, f"    ====> Average_latency_ms: FAILED, {simple_perf_args}")
+                    else:
+                        report_message(
+                            freport, f"    ====> Average_latency_ms:{result['average_latency_ms']}, {simple_perf_args}"
+                        )
 
                     if args.debug:
                         break

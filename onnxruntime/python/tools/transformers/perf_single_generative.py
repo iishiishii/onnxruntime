@@ -110,15 +110,18 @@ def perf_gpt_model(args: argparse.Namespace):
 
     # Test performance
     logger.info("Testing ort session......")
-    latency = []
-    for _ in range(args.total_runs):
-        start = time.time()
-        _ = ort_session.run(None, inputs)
-        latency.append(time.time() - start)
-    output = get_latency_result(latency, batch_size)
+    try:
+        latency = []
+        for _ in range(args.total_runs):
+            start = time.time()
+            _ = ort_session.run(None, inputs)
+            latency.append(time.time() - start)
+        output = get_latency_result(latency, batch_size)
 
-    print("    ====> ORT perf result:", output)
-    return output
+        print("      --> ORT perf result:", output)
+        return output
+    except:
+        return None
 
 
 def parse_arguments(argv) -> argparse.Namespace:
@@ -262,7 +265,7 @@ def parse_perf_single_generative_model(argv):
             "vocab_size",
         ]
     }
-    print("    ====> Perfing with config:", config_map)
+    print("      --> Perfing with config:", config_map)
     perf_result = perf_gpt_model(args)
     return perf_result, config_map
 
