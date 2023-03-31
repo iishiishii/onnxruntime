@@ -207,7 +207,8 @@ def perform_group_perf(args):
 
             # gpt2_running_variants = {
 
-            for _, perf_variant in gpt2_running_variants.items():
+            for perf_var_name, perf_variant in gpt2_running_variants.items():
+                report_message(freport, f"  ==> Perf test group: {perf_var_name}")
                 for batch_size in perf_variant["batch_size"]:
                     # {"max_length": 32, "context_length": [128], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
                     simple_perf_args = [f"--batch_size={batch_size}", f"--max_length={perf_variant['max_length']}"]
