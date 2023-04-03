@@ -90,12 +90,13 @@ void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE Trans
   MlasGemm(TransA, TransB, M, N, K, alpha, A, lda, B, ldb, beta, C, N, threadpool);
 }
 #else
+
 template <>
 void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
                                    ptrdiff_t N, ptrdiff_t K, Eigen::half alpha, const Eigen::half* A, const Eigen::half* B, Eigen::half beta,
                                    Eigen::half* C, ThreadPool*) {
   auto C_mat = EigenMatrixMap<Eigen::half>(C, N, M);
-  if (beta == 0) {
+  if (beta == static_cast<Eigen::half>(0)) {
     C_mat.setZero();
   } else {
     C_mat *= beta;
@@ -132,6 +133,13 @@ void Gemm<Eigen::half, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE Trans
     default:
       ORT_THROW("Unexpected CBLAS_TRANSPOSE for TransA of ", TransA);
   }
+}
+template <>
+void Gemm<MLFloat16, ThreadPool>(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, ptrdiff_t M,
+                                 ptrdiff_t N, ptrdiff_t K, MLFloat16 alpha, const MLFloat16* A, const MLFloat16* B, MLFloat16 beta,
+                                 MLFloat16* C, ThreadPool* tp) {
+  Gemm<Eigen::half, ThreadPool>(TransA, TransB, M, N, K, *reinterpret_cast<Eigen::half*>(&alpha),
+                                reinterpret_cast<const Eigen::half*>(A), reinterpret_cast<const Eigen::half*>(B), *reinterpret_cast<Eigen::half*>(&beta), reinterpret_cast<Eigen::half*>(C), tp);
 }
 #endif
 
