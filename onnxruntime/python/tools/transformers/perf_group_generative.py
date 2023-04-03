@@ -12,7 +12,6 @@ import onnxruntime
 
 general_gpt2_exporting_args = [
     "-b",  # no block operator
-    "--past_present_share_buffer",
     "--use_external_data_format",
     "--use_gpu",
     "--disable_parity",
@@ -22,36 +21,25 @@ general_gpt2_exporting_args = [
 
 custom_gpt2_exporting_args = {
     "greedy": [
-        "--num_beams=1",
-        "--num_return_sequences=1",
         "--top_p=0",
+        "--past_present_share_buffer",
         "--use_decoder_masked_self_attention",
     ],
     "topp": [
-        "--num_beams=1",
-        "--num_return_sequences=1",
         "--top_p=0.6",
+        "--past_present_share_buffer",
     ],
     "beam": [
-        "--num_beams=4",
-        "--num_return_sequences=1",
         "--top_p=0",
+        "--past_present_share_buffer",
         "--use_decoder_masked_self_attention",
     ],
-}
-
-general_gpt2_running_args = ["--min_length=1"]
-
-commandline_gpt2_running_key = {
-    "greedy": [],
-    "topp": [],
-    "beam": ["num_beams", "num_return_sequences"],
 }
 
 gpt2_running_variants = {
     "small_context": {"max_length": 32, "context_length": [128], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
     "middle_context": {"max_length": 32, "context_length": [512], "batch_size": [1, 2, 4, 8, 16, 32]},
-    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4, 32]},
+    "large_context": {"max_length": 32, "context_length": [1024], "batch_size": [1, 2, 4, 8, 16]},
     "different_length_context": {
         "max_length": 32,
         "context_length": [32, 64, 99, 128, 160, 192, 227, 256],
@@ -117,13 +105,15 @@ def parse_arguments(argv):
     )
 
     parser.add_argument(
-        "--overwrite",
+        "-f",
+        "--force_overwrite",
         required=False,
         action="store_true",
         help="Overwrite existing models to be exported",
     )
 
     parser.add_argument(
+        "-s",
         "--skip_exist_exported",
         required=False,
         action="store_true",
@@ -141,7 +131,7 @@ def parse_arguments(argv):
         "--num_beams",
         type=int,
         required=False,
-        default=4,
+        default=1,
         help="Beam size (default 1), only effective at beam search is used",
     )
 
@@ -151,6 +141,47 @@ def parse_arguments(argv):
         required=False,
         default=1,
         help="Number of return sequence <= num_beams, default 1, only effective at beam search is used",
+    )
+
+    # if all below three are specified in command line, only run this config
+    # {"max_length": 32, "context_length": [128, 256, 333], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
+    parser.add_argument(
+        "--max_length",
+        type=int,
+        required=False,
+        default=-1,
+        help="Max_lenght of the output (no counting the context length), default -1 means not use command line args",
+    )
+
+    parser.add_argument(
+        "--context_length",
+        type=int,
+        nargs="*",
+        default=[],
+        help="context_length of different sequence in batch. Empty means not use command line args",
+    )
+
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        nargs="*",
+        default=[],
+        help="batch_size to test. if not specified, do not using command line args. ",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output_report",
+        type=str,
+        default=None,
+        help="specify output report file name. if not specified, {workspace}/all_test_result.txt will be used",
+    )
+
+    parser.add_argument(
+        "--custom_name",
+        type=str,
+        default=None,
+        help="specify variant name if command line specify batch_size, context_length and max_length",
     )
 
     args = parser.parse_args(argv)
@@ -168,12 +199,17 @@ def perform_group_perf(args):
 
     Path(args.workspace).mkdir(parents=True, exist_ok=True)
     result_perf_file = os.path.join(args.workspace, "all_test_result.txt")
+    if args.output_report is not None:
+        result_perf_file = args.output_report
     with open(result_perf_file, "w") as freport:
         for model_name in args.model_names:
             report_message(freport, f"====> Model name: {model_name}")
             exporting_cmd = ["python", "convert_generation.py"]
             exporting_cmd.extend(general_gpt2_exporting_args)
             exporting_cmd.extend(custom_gpt2_exporting_args[args.search_type])
+            exporting_cmd.extend(
+                [f"--num_beams={args.num_beams}", f"--num_return_sequences={args.num_return_sequences}"]
+            )
             output_model_dir = os.path.join(args.workspace, model_name)
             output_model_path = os.path.join(output_model_dir, f"model_{args.precision}.onnx")
             exporting_cmd.extend([f"-m={model_name}", f"--cache_dir={args.cache_dir}"])
@@ -183,11 +219,13 @@ def perform_group_perf(args):
 
             Path(output_model_dir).mkdir(parents=True, exist_ok=True)
             if os.path.exists(output_model_path):
-                if args.overwrite:
+                if args.force_overwrite:
                     os.remove(output_model_path)
-                elif not args.skip_exist_exported:
+                elif args.skip_exist_exported:
+                    report_message(freport, f"  ==> [WARNING] Skip exporting existing onnx model {output_model_path}")
+                else:
                     raise RuntimeError(
-                        f"Onnx model [{output_model_path}] existed, please use --overwrite to rewrite it or --skip_exist_exported!"
+                        f"Onnx model [{output_model_path}] existed, please use -f/--force_overwrite to rewrite it or -s/--skip_exist_exported!"
                     )
 
             if not os.path.exists(output_model_path):
@@ -196,18 +234,26 @@ def perform_group_perf(args):
                 raise RuntimeError(f"Onnx model [{output_model_path}] not found, convert_generate error?")
 
             # Start running perf with various parameter combinations
-            base_run_conf = general_gpt2_running_args
+            base_run_conf = ["--min_length=1"]
             base_run_conf.extend([f"-m={model_name}", f"--cache_dir={args.cache_dir}"])
             base_run_conf.extend([f"--onnx_model={output_model_path}"])
-            # num_beams and num_return_sequences will be set here, others like ...
-            for key in commandline_gpt2_running_key[args.search_type]:
-                base_run_conf.extend([f"--{key}={getattr(args, key)}"])
-
+            base_run_conf.extend(
+                [f"--num_beams={args.num_beams}", f"--num_return_sequences={args.num_return_sequences}"]
+            )
             report_message(freport, f"  ==> Common running args:{base_run_conf}")
 
-            # gpt2_running_variants = {
+            effective_variants = gpt2_running_variants
+            if args.max_length > 0 and len(args.batch_size) > 0 and len(args.context_length) > 0:
+                custom_name = args.custom_name if args.custom_name is not None else "command_line_variant"
+                effective_variants = {
+                    custom_name: {
+                        "max_length": args.max_length,
+                        "context_length": args.context_length,
+                        "batch_size": args.batch_size,
+                    },
+                }
 
-            for perf_var_name, perf_variant in gpt2_running_variants.items():
+            for perf_var_name, perf_variant in effective_variants.items():
                 report_message(freport, f"  ==> Perf test group: {perf_var_name}")
                 for batch_size in perf_variant["batch_size"]:
                     # {"max_length": 32, "context_length": [128], "batch_size": [1, 2, 4, 8, 16, 32, 64]},
